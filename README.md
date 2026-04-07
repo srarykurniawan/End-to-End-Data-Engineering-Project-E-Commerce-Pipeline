@@ -1,4 +1,4 @@
-# End-to-End-Data-Engineering-Project-E-Commerce-Pipeline
+# End to End Data Engineering Project E Commerce-Pipeline
 
 End-to-end Data Engineering project — **Batch only**, Metabase visualization,
 Enhanced Data Quality dengan 30 DQ rules.
