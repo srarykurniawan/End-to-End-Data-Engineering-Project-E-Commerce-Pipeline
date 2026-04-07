@@ -1,0 +1,36 @@
+# =============================================================================
+# dbt/profiles.yml — Database connection config
+# =============================================================================
+# dev   → dari Windows/host lokal, pakai localhost:5433
+# prod  → dari dalam Docker (Airflow), pakai postgres:5432
+# =============================================================================
+
+ecommerce_pipeline:
+  target: dev
+  outputs:
+
+    # ── Development — dari Windows/terminal lokal ─────────────────────────────
+    dev:
+      type: postgres
+      host: localhost
+      port: 5433          # Port external (host)
+      user: postgres
+      password: postgres
+      dbname: ecommerce_db
+      schema: staging
+      threads: 4
+      keepalives_idle: 0
+      connect_timeout: 10
+
+    # ── Production — dari Airflow di dalam Docker ─────────────────────────────
+    prod:
+      type: postgres
+      host: postgres       # Service name di docker-compose
+      port: 5432           # Port internal container
+      user: postgres
+      password: postgres
+      dbname: ecommerce_db
+      schema: staging
+      threads: 4
+      keepalives_idle: 0
+      connect_timeout: 10

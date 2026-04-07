@@ -1,0 +1,77 @@
+# =============================================================================
+# dbt/models/staging/sources.yml
+# Deklarasi sumber data (raw tables) yang digunakan dbt
+# =============================================================================
+
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw schema berisi data yang baru diingest dari CSV"
+    database: ecommerce_db
+    schema: raw
+    # Freshness check: alert jika data lebih dari 25 jam
+    freshness:
+      warn_after: {count: 24, period: hour}
+      error_after: {count: 48, period: hour}
+    loaded_at_field: ingested_at
+
+    tables:
+      - name: ecommerce_purchases
+        description: "Data transaksi e-commerce dari CSV batch ingest"
+        columns:
+          - name: id
+            description: "Primary key auto-increment"
+            tests:
+              - unique
+              - not_null
+
+          - name: email
+            description: "Email customer"
+            tests:
+              - not_null
+
+          - name: purchase_price
+            description: "Harga pembelian dalam USD"
+            tests:
+              - not_null
+              - dbt_utils.accepted_range:
+                  min_value: 0
+                  max_value: 10000
+
+          - name: cc_provider
+            description: "Provider kartu kredit"
+            tests:
+              - not_null
+              - accepted_values:
+                  values:
+                    - 'Visa 16 digit'
+                    - 'VISA 16 digit'
+                    - 'Mastercard'
+                    - 'American Express'
+                    - 'Discover'
+                    - 'JCB 16 digit'
+                    - 'JCB 15 digit'
+                    - 'Diners Club / Carte Blanche'
+                    - 'Maestro'
+                    - 'VISA 13 digit'
+                    - 'Voyager'
+                  quote: true
+
+          - name: am_or_pm
+            description: "Waktu transaksi (AM atau PM)"
+            tests:
+              - accepted_values:
+                  values: ['AM', 'PM']
+
+      # - name: kafka_purchase_events
+      #   description: "Streaming purchase events dari Kafka consumer"
+      #   loaded_at_field: consumed_at
+      #   columns:
+      #     - name: event_id
+      #       tests:
+      #         - unique
+      #         - not_null
+      #     - name: email
+      #       tests:
+      #         - not_null

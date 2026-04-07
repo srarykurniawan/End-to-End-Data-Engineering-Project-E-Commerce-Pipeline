@@ -1,0 +1,96 @@
+version: 2
+
+models:
+  - name: stg_purchases
+    description: >
+      Staging model — cleaned & standardized purchase transactions.
+      Grain: one row per transaction (from raw.ecommerce_purchases).
+      All columns renamed to snake_case, types cast, derived columns added.
+    config:
+      tags: ['staging', 'silver']
+
+    columns:
+      - name: purchase_id
+        description: "Surrogate key: MD5(email || credit_card || price || ingested_at)"
+        tests:
+          - not_null
+          - unique
+
+      - name: email
+        description: "Customer email, lowercased and trimmed"
+        tests:
+          - not_null
+
+      - name: purchase_price
+        description: "Transaction value in USD"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 10000
+
+      - name: time_of_day
+        description: "AM or PM"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['AM', 'PM']
+
+      - name: cc_provider
+        description: "Full CC provider name from raw data"
+        tests:
+          - not_null
+
+      - name: cc_provider_simple
+        description: "Simplified CC provider: Visa, Mastercard, Amex, JCB, etc."
+        tests:
+          - not_null
+
+      - name: price_tier
+        description: "Price bucket: Low(<25) | Medium(25-50) | High(50-75) | Premium(>=75)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Low', 'Medium', 'High', 'Premium']
+
+      - name: os_type
+        description: "OS extracted from browser user-agent: Windows/macOS/Linux/iOS/Android/Other"
+        tests:
+          - not_null
+
+      - name: browser_name
+        description: "Browser family: Mozilla or Opera"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Mozilla', 'Opera', 'Other']
+
+      - name: is_cc_expired
+        description: "TRUE if CC exp date is before March 2026"
+        tests:
+          - not_null
+
+      - name: is_cvv_abnormal
+        description: "TRUE if CVV length is not 3 digits"
+        tests:
+          - not_null
+
+      - name: cc_exp_month
+        description: "CC expiry month (1-12) parsed from MM/YY"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 12
+
+      - name: cc_exp_year
+        description: "CC expiry year (4-digit, e.g. 2026) parsed from MM/YY"
+        tests:
+          - not_null
+
+      - name: language_code
+        description: "Lowercase ISO language code: de, ru, el, pt, en, fr, es, it, zh"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['de', 'ru', 'el', 'pt', 'en', 'fr', 'es', 'it', 'zh']

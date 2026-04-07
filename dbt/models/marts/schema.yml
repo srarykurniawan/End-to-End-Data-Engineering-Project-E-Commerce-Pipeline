@@ -1,0 +1,122 @@
+version: 2
+
+models:
+  # ── mart_sales_summary ───────────────────────────────────────────────────────
+  - name: mart_sales_summary
+    description: >
+      Revenue and transaction analytics per CC Provider.
+      Grain: one row per CC Provider. Updated daily by batch pipeline.
+    config:
+      tags: ['marts', 'gold', 'revenue']
+    columns:
+      - name: cc_provider
+        description: "Full CC provider name (PK)"
+        tests: [not_null, unique]
+      - name: total_transactions
+        description: "Total number of transactions"
+        tests: [not_null]
+      - name: total_revenue
+        description: "Sum of all purchase_price for this provider"
+        tests: [not_null]
+      - name: revenue_share_pct
+        description: "Percentage of grand total revenue"
+        tests: [not_null]
+      - name: avg_order_value
+        description: "Average purchase price"
+        tests: [not_null]
+      - name: expired_cc_pct
+        description: "Percentage of transactions with expired CC"
+        tests: [not_null]
+
+  # ── mart_customer_360 ────────────────────────────────────────────────────────
+  - name: mart_customer_360
+    description: >
+      360-degree customer profile with segmentation and fraud scoring.
+      Grain: one row per customer (email). Updated daily.
+    config:
+      tags: ['marts', 'gold', 'customer']
+    columns:
+      - name: email
+        description: "Customer email (PK / Natural Key)"
+        tests: [not_null, unique]
+      - name: customer_segment
+        description: "VIP(>=10tx) | Regular(4-9) | Occasional(2-3) | One-time(1)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['VIP', 'Regular', 'Occasional', 'One-time']
+      - name: spending_tier
+        description: "Premium(>=300) | High(150-300) | Medium(75-150) | Low(<75)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Premium', 'High', 'Medium', 'Low']
+      - name: fraud_risk_score
+        description: "Composite risk score 0-100"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: fraud_risk_category
+        description: "Critical(>=80) | High(60-80) | Medium(40-60) | Low(20-40) | Clean(<20)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Critical', 'High', 'Medium', 'Low', 'Clean']
+      - name: engagement_level
+        description: "High(>=5tx) | Medium(2-4tx) | Low(1tx)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['High', 'Medium', 'Low']
+      - name: total_transactions
+        description: "Total number of transactions by this customer"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: total_spend
+        description: "Total USD spent by this customer"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  # ── mart_fraud_signals ───────────────────────────────────────────────────────
+  - name: mart_fraud_signals
+    description: >
+      Per-transaction fraud signals with 4 rule-based boolean flags.
+      Grain: one row per transaction. Joined with customer risk profile.
+    config:
+      tags: ['marts', 'gold', 'fraud']
+    columns:
+      - name: purchase_id
+        description: "Transaction surrogate key (PK)"
+        tests: [not_null, unique]
+      - name: email
+        description: "Customer email (FK to mart_customer_360)"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('mart_customer_360')
+              field: email
+      - name: flag_high_value
+        description: "TRUE if purchase_price >= fraud_price_threshold (default $75)"
+        tests: [not_null]
+      - name: flag_expired_cc
+        description: "TRUE if CC exp date is before current month"
+        tests: [not_null]
+      - name: flag_abnormal_cvv
+        description: "TRUE if CVV length != 3 digits"
+        tests: [not_null]
+      - name: flag_high_risk_customer
+        description: "TRUE if customer fraud_risk_score > 60"
+        tests: [not_null]
+      - name: total_flags
+        description: "Sum of active flags (0-4)"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 4

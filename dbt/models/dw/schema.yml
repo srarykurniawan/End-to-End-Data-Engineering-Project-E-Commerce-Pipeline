@@ -1,0 +1,189 @@
+version: 2
+
+models:
+  # ── dim_payment ─────────────────────────────────────────────────────────────
+  - name: dim_payment
+    description: >
+      Payment dimension (SCD Type 1 — overwrite on change).
+      Grain: one row per unique credit card number.
+      Contains CC provider, expiry info, CVV validation status.
+    columns:
+      - name: credit_card_number
+        description: Natural key — unique credit card number
+        tests:
+          - not_null
+          - unique
+
+      - name: cc_provider
+        description: Card provider name (JCB, Visa, Mastercard, etc.)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['JCB 16 digit','VISA 16 digit','JCB 15 digit',
+                       'American Express','Maestro','Voyager','Discover',
+                       'Mastercard','VISA 13 digit','Diners Club / Carte Blanche']
+
+      - name: is_expired
+        description: TRUE if CC expiry date is before current date
+        tests:
+          - not_null
+
+      - name: cvv_length
+        description: Length of CVV/security code (normal = 3 digits)
+        tests:
+          - not_null
+
+      - name: is_cvv_abnormal
+        description: TRUE if CVV length is not exactly 3 digits
+        tests:
+          - not_null
+
+  # ── dim_browser ──────────────────────────────────────────────────────────────
+  - name: dim_browser
+    description: >
+      Browser and OS dimension (SCD Type 0 — fixed, never changes).
+      Grain: one row per unique browser + OS combination.
+      Parsed from browser_info user-agent string.
+    columns:
+      - name: browser_name
+        description: Browser name extracted from user-agent (Mozilla, Opera)
+        tests:
+          - not_null
+
+      - name: browser_family
+        description: High-level browser family grouping
+        tests:
+          - not_null
+
+  # ── dim_customer_scd2 ────────────────────────────────────────────────────────
+  - name: dim_customer_scd2
+    description: >
+      Customer dimension with FULL SCD Type 2 history tracking.
+
+      SCD Type Classification per column:
+        - Type 0 (Fixed):    customer_id, email — never changes
+        - Type 1 (Overwrite): job_title, company — overwrite silently
+        - Type 2 (History):  customer_segment, spending_tier,
+                              fraud_risk_score, fraud_risk_category,
+                              total_transactions, total_spend
+
+      When a Type 2 attribute changes:
+        1. Old row: expiry_date = NOW(), is_current = FALSE
+        2. New row: effective_date = NOW(), expiry_date = NULL,
+                    is_current = TRUE, version = version + 1
+
+      Example: customer goes from 'One-time' → 'Occasional'
+        Row 1: segment='One-time', eff=2024-01-10, exp=2024-03-15, curr=FALSE, v=1
+        Row 2: segment='Occasional', eff=2024-03-15, exp=NULL, curr=TRUE, v=2
+
+    columns:
+      - name: customer_id
+        description: Natural key — email address of the customer
+        tests:
+          - not_null
+
+      - name: email
+        description: Customer email address
+        tests:
+          - not_null
+
+      - name: customer_segment
+        description: VIP (>=10 tx) | Regular (4-9) | Occasional (2-3) | One-time (1)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['VIP', 'Regular', 'Occasional', 'One-time']
+
+      - name: spending_tier
+        description: Premium($75-100) | High($50-75) | Medium($25-50) | Low(<$25)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Premium', 'High', 'Medium', 'Low']
+
+      - name: fraud_risk_score
+        description: Composite fraud risk score 0-100
+        tests:
+          - not_null
+
+      - name: fraud_risk_category
+        description: Critical(>80) | High(60-80) | Medium(40-60) | Low(20-40) | Clean(<20)
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Critical', 'High', 'Medium', 'Low', 'Clean']
+
+      - name: effective_date
+        description: Date this version became active (SCD2 metadata)
+        tests:
+          - not_null
+
+      - name: is_current
+        description: TRUE = active/current version | FALSE = historical (expired)
+        tests:
+          - not_null
+
+      - name: version
+        description: Version number starting at 1. Increments each time Type 2 attributes change.
+        tests:
+          - not_null
+
+  # ── fact_transactions ────────────────────────────────────────────────────────
+  - name: fact_transactions
+    description: >
+      Central fact table — Star Schema.
+      Grain: ONE ROW PER TRANSACTION.
+      Immutable: transactions are never updated, only appended.
+
+      Key design decisions:
+      - customer_key → dim_customer_scd2: points to the version active
+        at the time the transaction was loaded. This allows correct
+        historical analysis: "what segment was the customer in when
+        they made this purchase?"
+      - All fraud flags are pre-computed for fast dashboard queries
+      - date_key uses YYYYMMDD integer format for fast date range queries
+
+    columns:
+      - name: transaction_id
+        description: Natural key — MD5 hash of email+cc+price+ingested_at
+        tests:
+          - not_null
+          - unique
+
+      - name: customer_key
+        description: FK to dim_customer_scd2 (version active at load time)
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customer_scd2')
+              field: customer_key
+
+      - name: payment_key
+        description: FK to dim_payment
+        tests:
+          - relationships:
+              to: ref('dim_payment')
+              field: payment_key
+
+      - name: date_key
+        description: FK to dim_date in YYYYMMDD integer format
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+
+      - name: purchase_price
+        description: Transaction value in USD
+        tests:
+          - not_null
+
+      - name: total_fraud_flags
+        description: Count of active fraud flags (0-4)
+        tests:
+          - not_null
+
+      - name: is_fraud_flagged
+        description: TRUE if any of the 4 fraud flags is active
+        tests:
+          - not_null

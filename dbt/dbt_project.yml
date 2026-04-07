@@ -1,0 +1,65 @@
+# =============================================================================
+# dbt_project.yml — E-Commerce Analytics Pipeline
+# =============================================================================
+
+name: 'ecommerce_pipeline'
+version: '1.0.0'
+config-version: 2
+
+profile: 'ecommerce_pipeline'
+
+model-paths:    ["models"]
+analysis-paths: ["analyses"]
+test-paths:     ["tests"]
+seed-paths:     ["seeds"]
+macro-paths:    ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# ── Global Variables (override via --vars flag) ───────────────────────────────
+vars:
+  min_price_valid: 0          # Minimum valid purchase price
+  fraud_price_threshold: 75   # High-value transaction threshold
+  current_year: 2026          # Untuk expired CC detection
+
+# ── Model Config per Layer ────────────────────────────────────────────────────
+models:
+  ecommerce_pipeline:
+
+    staging:
+      +schema: staging
+      +materialized: view
+      +tags: ['staging', 'silver']
+
+    intermediate:
+      +schema: staging         # Masuk ke schema staging juga (bukan schema tersendiri)
+      +materialized: table
+      +tags: ['intermediate', 'silver']
+
+    marts:
+      +schema: marts
+      +materialized: table
+      +tags: ['marts', 'gold']
+      +post-hook:
+        - "GRANT SELECT ON {{ this }} TO PUBLIC"
+
+    dw:
+      +schema: dw
+      +materialized: table
+      +tags: ['dw', 'star_schema']
+      dim_customer_scd2:
+        +materialized: incremental
+        +unique_key: customer_key
+        +tags: ['scd2']
+      fact_transactions:
+        +materialized: incremental
+        +unique_key: transaction_id
+        +tags: ['fact']
+
+# ── Seed Config ───────────────────────────────────────────────────────────────
+seeds:
+  ecommerce_pipeline:
+    +schema: seeds
+    +quote_columns: false
