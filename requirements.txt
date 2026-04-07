@@ -1,4 +1,4 @@
-# requirements.txt — E-Commerce Batch Analytics Pipeline v2
+# requirements.txt — End to End Data Engineering Project E-Commerce Pipeline
 # Python 3.13 | Batch only (no Kafka/Spark)
 # Install: pip install -r requirements.txt
 
